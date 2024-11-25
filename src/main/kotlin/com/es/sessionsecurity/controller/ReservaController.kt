@@ -1,8 +1,11 @@
 package com.es.sessionsecurity.controller
 
+import com.es.sessionsecurity.error.exception.BadRequestException
 import com.es.sessionsecurity.model.Reserva
+import com.es.sessionsecurity.model.Rol
 import com.es.sessionsecurity.service.ReservaService
 import com.es.sessionsecurity.service.SessionService
+import com.es.sessionsecurity.service.UsuarioService
 import jakarta.servlet.http.Cookie
 import jakarta.servlet.http.HttpServletRequest
 import org.apache.coyote.Request
@@ -26,6 +29,9 @@ class ReservaController {
     @Autowired
     private lateinit var sessionService: SessionService
 
+    @Autowired
+    private lateinit var usuarioService: UsuarioService
+
     /*
     OBTENER TODAS LAS RESERVAS POR EL NOMBRE DE USUARIO DE UN CLIENTE
      */
@@ -35,37 +41,50 @@ class ReservaController {
         request: HttpServletRequest
     ) : ResponseEntity<List<Reserva>?> {
 
-        /*
-        COMPROBAR QUE LA PETICIÓN ESTÁ CORRECTAMENTE AUTORIZADA PARA REALIZAR ESTA OPERACIÓN
-         */
+//        /*
+//        COMPROBAR QUE LA PETICIÓN ESTÁ CORRECTAMENTE AUTORIZADA PARA REALIZAR ESTA OPERACIÓN
+//         */
+//
+//        //1ero Extraemos la cookie
+//        val cookie: Cookie? = request.cookies.find{ c: Cookie ? -> c?.name == "tokenSession"}
+//        val token : String? = cookie?.value
+//
+//        //2do Comprobamos la validez dele token
+//        if (sessionService.checkToken(token!!)){
+//            //Realizar la consulta a la base de datos
+//            return ResponseEntity<List<Reserva>?>(null, HttpStatus.OK)
+//        }
+//        /*
+//        LLAMAR AL SERVICE PARA REALIZAR LA L.N. Y LA LLAMADA A LA BASE DE DATOS
+//         */
+//        // CÓDIGO AQUÍ
+//
+//        // RESPUESTA
+//        return ResponseEntity<List<Reserva>?>(null, HttpStatus.OK); // cambiar null por las reservas
 
-        //1ero Extraemos la cookie
-        val cookie: Cookie? = request.cookies.find{ c: Cookie ? -> c?.name == "tokenSession"}
-        val token : String? = cookie?.value
+        val token = extractTokenFromRequest(request)
+        val usuario = sessionService.getUsuarioFromToken(token)
 
-        //2do Comprobamos la validez dele token
-        if (sessionService.checkToken(token!!)){
-            //Realizar la consulta a la base de datos
-            return ResponseEntity<List<Reserva>?>(null, HttpStatus.OK)
+        if (usuario.rol == Rol.USER && usuario.nombre != nombre) {
+            return ResponseEntity(HttpStatus.FORBIDDEN)
         }
-        /*
-        LLAMAR AL SERVICE PARA REALIZAR LA L.N. Y LA LLAMADA A LA BASE DE DATOS
-         */
-        // CÓDIGO AQUÍ
 
-        // RESPUESTA
-        return ResponseEntity<List<Reserva>?>(null, HttpStatus.OK); // cambiar null por las reservas
+        val reservas = reservaService.getReservasByNombreUsuario(nombre)
+        return ResponseEntity(reservas, HttpStatus.OK)
+
+
 
     }
 
     /*
     INSERTAR UNA NUEVA RESERVA
      */
-    @PostMapping("/")
     fun insert(
-        @RequestBody nuevaReserva: Reserva
-    ) : ResponseEntity<Reserva?>{
+        @RequestBody nuevaReserva: Reserva,
+        request: HttpServletRequest
+    ) : ResponseEntity<Reserva?> {
 
+        // todo aqui nos hemos quedado
         /*
         COMPROBAR QUE LA PETICIÓN ESTÁ CORRECTAMENTE AUTORIZADA PARA REALIZAR ESTA OPERACIÓN
          */
@@ -77,7 +96,24 @@ class ReservaController {
         // CÓDIGO AQUÍ
 
         // RESPUESTA
-        return ResponseEntity<Reserva?>(null, HttpStatus.CREATED); // cambiar null por la reserva
+
+        val token = extractTokenFromRequest(request)
+        val usuario = sessionService.getUsuarioFromToken(token)
+
+        if (usuario.rol == Rol.USER && usuario.nombre != nuevaReserva.usuario.nombre) {
+            return ResponseEntity(HttpStatus.FORBIDDEN)
+        }
+
+        val reserva = reservaService.insertarReserva(nuevaReserva)
+
+
+        return ResponseEntity<Reserva?>(reserva, HttpStatus.CREATED); // cambiar null por la reserva
+    }
+
+
+    private fun extractTokenFromRequest(request: HttpServletRequest): String {
+        val cookie = request.cookies?.find { it.name == "tokenSession" }
+        return cookie?.value ?: throw BadRequestException("Token no encontrado")
     }
 
 }
